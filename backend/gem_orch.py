@@ -35,6 +35,8 @@ class TapCommand(BaseModel):
 class TypeCommand(BaseModel):
     action: Literal["type"]
     text: str
+    box_id: str
+
 
 class SwipeUpCommand(BaseModel):
     action: Literal["swipeUp"]
@@ -54,17 +56,14 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 def create_command_response(action: str, *, box_id: Optional[str] = None, text: Optional[str] = None) -> dict:
-    """
-    Returns a dict representation of CommandResponse.
-    """
     if action == "tap" and box_id:
         return CommandResponse(
             command=TapCommand(action="tap", box_id=box_id),
             isDone=False
         ).model_dump()
-    elif action == "type" and text is not None:
+    elif action == "type" and text is not None and box_id:
         return CommandResponse(
-            command=TypeCommand(action="type", text=text),
+            command=TypeCommand(action="type", text=text, box_id=box_id),
             isDone=False
         ).model_dump()
     elif action == "swipeUp":
