@@ -126,6 +126,9 @@ Instruction: \"{instruction}\"
         ],
         temperature=0,
     )
+
+    print(resp.choices[0].message.tool_calls[0].function.arguments)
+
     return json.loads(resp.choices[0].message.tool_calls[0].function.arguments)["goals"]
 
 
