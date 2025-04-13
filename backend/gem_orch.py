@@ -1,7 +1,7 @@
 import os
 import json
 import base64
-import hashlib
+import hashlib, re
 import time
 from typing import List, Dict, Optional, Union, Literal, Annotated, Any
 
@@ -44,16 +44,15 @@ class SwipeUpCommand(BaseModel):
 class SwipeDownCommand(BaseModel):
     action: Literal["swipeDown"]
 
+class BackCommand(BaseModel):
+    action: Literal["back"]
+
 class CommandResponse(BaseModel):
     command: Union[TapCommand, TypeCommand, SwipeUpCommand, SwipeDownCommand, BackCommand]
     isDone: bool
 
 class BackCommand(BaseModel):
     action: Literal["back"]
-
-class WaitCommand(BaseModel):
-    action: Literal["wait"]
-    duration: int  # Wait duration in milliseconds
 
 # ---------------------------------------------------------------------------
 # 🔨 Utility helpers
@@ -116,6 +115,65 @@ box_tools = [
         },
     }
 ]
+
+operation_tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "detect_operation_in_progress",
+            "description": "Detect if there's an operation in progress on the screen like loading, animation, or processing.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "is_operation_in_progress": {
+                        "type": "boolean",
+                        "description": "Whether any operation is in progress on the screen"
+                    },
+                    "wait_duration": {
+                        "type": "integer",
+                        "description": "Suggested wait time in milliseconds if operation is in progress"
+                    }
+                },
+                "required": ["is_operation_in_progress"]
+            }
+        }
+    }
+]
+
+def detect_operation(img_b64: str) -> dict:
+    """Detect if there's any operation in progress on the screen that requires waiting"""
+    resp = client.chat.completions.create(
+        model="gemini-2.0-flash",
+        tools=operation_tools,
+        tool_choice={"type": "function", "function": {"name": "detect_operation_in_progress"}},
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": """Analyze this Android screenshot and determine if there's any operation in progress 
+                        that requires waiting before the next interaction. 
+                        Look for:
+                        - Loading indicators or spinners
+                        - Progress bars
+                        - "Please wait" messages
+                        - Animations in progress
+                        - Dialogs that are appearing/disappearing
+                        - Any visual cues indicating the app is busy
+                        
+                        Return true if any operation is in progress along with a suggested wait time.""",
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                    },
+                ],
+            }
+        ],
+        temperature=0.1,
+    )
+    return json.loads(resp.choices[0].message.tool_calls[0].function.arguments)
 
 def extract_goals(instruction: str) -> List[str]:
     resp = client.chat.completions.create(
@@ -337,6 +395,13 @@ def process_request(data: dict, client_id: str) -> dict:
         log_action(client_id, "Duplicate screenshot detected")
         return {"warning": "Duplicate screenshot received"}
 
+    # Check for operations in progress before doing anything else
+    operation_check = detect_operation(img_b64)
+    if operation_check.get("is_operation_in_progress", False):
+        wait_duration = operation_check.get("wait_duration", 1000)  # Default 1 second if not specified
+        log_action(client_id, f"Operation in progress detected, waiting for {wait_duration}ms")
+        return create_command_response("wait", duration=wait_duration)
+
     # Check if all goals are completed
     if state.is_all_done():
         log_action(client_id, "All goals completed")
@@ -395,15 +460,14 @@ def process_request(data: dict, client_id: str) -> dict:
         state.register_goal_attempt(success=True, action="tap")
         return create_command_response("tap", box_id=box_id)
     else:
-        # Element not found, try scrolling
+        # Element not found, try scrolling or going back
         if state.swipe_attempts < state.max_swipe_attempts:
             action = state.get_next_alternative_action()
             log_action(client_id, f"Element not found. Trying {action}", {"swipe_attempt": state.swipe_attempts + 1})
             state.register_goal_attempt(success=False, action=action)
             return create_command_response(action)
         else:
-            # If we've scrolled too much without finding the element, skip this goal
-            log_action(client_id, "Max scroll attempts reached, skipping goal")
+            # If we've tried too many recovery actions without finding the element, skip this goal
+            log_action(client_id, "Max recovery attempts reached, skipping goal")
             state.advance_goal()
             return create_command_response("swipeUp")  # One more scroll before next goal
-        
