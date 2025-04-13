@@ -1,7 +1,7 @@
 import os
 import json
 import base64
-import hashlib
+import hashlib, re
 import time
 from typing import List, Dict, Optional, Union, Literal, Annotated, Any
 
@@ -44,16 +44,15 @@ class SwipeUpCommand(BaseModel):
 class SwipeDownCommand(BaseModel):
     action: Literal["swipeDown"]
 
+class BackCommand(BaseModel):
+    action: Literal["back"]
+
 class CommandResponse(BaseModel):
     command: Union[TapCommand, TypeCommand, SwipeUpCommand, SwipeDownCommand, BackCommand, WaitCommand]
     isDone: bool
 
 class BackCommand(BaseModel):
     action: Literal["back"]
-
-class WaitCommand(BaseModel):
-    action: Literal["wait"]
-    duration: int  # Wait duration in milliseconds
 
 # ---------------------------------------------------------------------------
 # 🔨 Utility helpers
