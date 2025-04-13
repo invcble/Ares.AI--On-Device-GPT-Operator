@@ -97,6 +97,24 @@ class MainActivity : AppCompatActivity() {
         webSocket = okHttpClient.newWebSocket(request, listener)
 
         Toast.makeText(this, "WebSocket started", Toast.LENGTH_SHORT).show()
-        Log.d("MainActivity", "WebSocket connection initiated.")
+        Log.d("MainActivity", "WebSockeñt connection initiated.")
     }
+    private fun setupGradientTitle() {
+        val tvTitle = findViewById<TextView>(R.id.tvTitle)
+        tvTitle.post {
+            val paint = tvTitle.paint
+            val width = paint.measureText(tvTitle.text.toString())
+            val shader = android.graphics.LinearGradient(
+                0f, 0f, width, tvTitle.textSize,
+                intArrayOf(
+                    android.graphics.Color.parseColor("#7F00FF"),
+                    android.graphics.Color.parseColor("#E100FF")
+                ),
+                null,
+                android.graphics.Shader.TileMode.CLAMP
+            )
+            tvTitle.paint.shader = shader
+        }
+    }
+}
 }

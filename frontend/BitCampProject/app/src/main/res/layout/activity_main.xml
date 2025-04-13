@@ -71,43 +71,54 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Microphone circular button at the bottom center -->
+
+    <!-- 'Start WebSocket' Button -->
+
     <ImageButton
         android:id="@+id/btnMic"
         android:layout_width="60dp"
         android:layout_height="60dp"
-        android:layout_marginBottom="24dp"
+        android:layout_marginBottom="52dp"
         android:background="@drawable/rounded_button_bg"
-        android:src="@drawable/ic_mic"
         android:contentDescription="@string/mic_button"
         android:padding="12dp"
+        android:src="@drawable/ic_mic"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- 'Start WebSocket' Button -->
-    <Button
-        android:id="@+id/btnStartWebSocket"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Start WebSocket"
-        android:layout_marginTop="12dp"
-        app:layout_constraintTop_toBottomOf="@id/etPrompt"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.498"
+        app:layout_constraintStart_toStartOf="parent" />
 
 
     <!-- 'Start/Stop Screen Share' Button -->
+
+    <!-- Prompt Input Field -->
+    <ImageButton
+        android:id="@+id/btnMic"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_marginTop="24dp"
+        android:background="@drawable/rounded_button_bg"
+        android:contentDescription="Start Listening"
+        android:elevation="6dp"
+        android:src="@drawable/ic_mic"
+        app:layout_constraintBottom_toTopOf="@id/btnToggleScreenShare"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.492"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/etPrompt"
+        app:layout_constraintVertical_bias="0.0" />
+
     <Button
         android:id="@+id/btnToggleScreenShare"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Start Screen Share"
         android:layout_marginTop="12dp"
-        app:layout_constraintTop_toBottomOf="@id/btnStartWebSocket"
+        android:text="Start Screen Share"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.497"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintTop_toBottomOf="@id/btnStartWebSocket" />
 
-    <!-- Prompt Input Field -->
     <EditText
         android:id="@+id/etPrompt"
         android:layout_width="0dp"
@@ -125,6 +136,12 @@
         android:layout_marginStart="24dp"
         android:layout_marginEnd="24dp"/>
 
+    <com.google.android.material.chip.Chip
+        android:id="@+id/chip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        tools:layout_editor_absoluteX="5dp"
+        tools:layout_editor_absoluteY="2dp" />
 
 
 </androidx.constraintlayout.widget.ConstraintLayout>
