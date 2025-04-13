@@ -45,8 +45,15 @@ class SwipeDownCommand(BaseModel):
     action: Literal["swipeDown"]
 
 class CommandResponse(BaseModel):
-    command: Union[TapCommand, TypeCommand, SwipeUpCommand, SwipeDownCommand]
+    command: Union[TapCommand, TypeCommand, SwipeUpCommand, SwipeDownCommand, BackCommand]
     isDone: bool
+
+class BackCommand(BaseModel):
+    action: Literal["back"]
+
+class WaitCommand(BaseModel):
+    action: Literal["wait"]
+    duration: int  # Wait duration in milliseconds
 
 # ---------------------------------------------------------------------------
 # 🔨 Utility helpers
@@ -74,6 +81,11 @@ def create_command_response(action: str, *, box_id: Optional[str] = None, text: 
     elif action == "swipeDown":
         return CommandResponse(
             command=SwipeDownCommand(action="swipeDown"),
+            isDone=False
+        ).model_dump()
+    elif action == "back":
+        return CommandResponse(
+            command=BackCommand(action="back"),
             isDone=False
         ).model_dump()
     else:
@@ -192,7 +204,7 @@ class SessionState:
         self.max_consecutive_fails = 3
         self.swipe_attempts = 0
         self.max_swipe_attempts = 5
-        self.alternative_actions = ["swipeUp", "swipeDown"]
+        self.alternative_actions = ["swipeUp", "swipeDown", "back"]
         self.action_index = 0
         self.last_action = None
         self.goal_timestamps = {}  # Track when we started working on each goal
@@ -245,9 +257,16 @@ class SessionState:
     def handle_stuck_goal(self) -> None:
         """Try to recover when stuck on a goal"""
         print(f"⚠️ Stuck on goal: {self.current_goal()}. Attempting recovery...")
-        # If we've tried swiping too many times without finding the element, try the next goal
+        
+        # If we've been scrolling too much without finding the element, try going back
+        if self.swipe_attempts >= self.max_swipe_attempts // 2:  # After half of max swipe attempts
+            print("Scroll attempts not working, trying to go back")
+            self.action_index = 2  # Force next alternative_action to be "back"
+            return
+        
+        # If we've tried back and still can't find the element, skip this goal
         if self.swipe_attempts >= self.max_swipe_attempts:
-            print("Exhausted swipe attempts, moving to next goal")
+            print("Exhausted recovery attempts, moving to next goal")
             self.advance_goal()
             return
             
