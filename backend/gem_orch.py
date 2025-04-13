@@ -2,11 +2,11 @@ import os
 import json
 import base64
 import hashlib
-import logging
-from typing import List, Dict, Optional, Union, Literal, Annotated, Tuple
+import time
+from typing import List, Dict, Optional, Union, Literal, Annotated, Any
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, StringConstraints, Field
+from pydantic import BaseModel, StringConstraints
 from openai import OpenAI
 
 # ---------------------------------------------------------------------------
@@ -14,19 +14,12 @@ from openai import OpenAI
 # ---------------------------------------------------------------------------
 load_dotenv()
 client = OpenAI(
-    api_key=os.getenv("GEMINI_API_KEY"),
+    api_key=os.getenv("GEMINI_API_KEY"),  # You must define GEMINI_API_KEY in your .env
     base_url="https://generativelanguage.googleapis.com/v1beta/"
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("search_agent")
-
 # ---------------------------------------------------------------------------
-# 📝 Pydantic models for commands and responses
+# 📝 Pydantic models (mirrors the schema your mobile client expects)
 # ---------------------------------------------------------------------------
 
 class GoalExtractionResponse(BaseModel):
@@ -39,102 +32,56 @@ class TapCommand(BaseModel):
     action: Literal["tap"]
     box_id: str
 
+class TypeCommand(BaseModel):
+    action: Literal["type"]
+    text: str
+
 class SwipeUpCommand(BaseModel):
     action: Literal["swipeUp"]
 
 class SwipeDownCommand(BaseModel):
     action: Literal["swipeDown"]
 
-class SwipeLeftCommand(BaseModel):
-    action: Literal["swipeLeft"]
-
-class SwipeRightCommand(BaseModel):
-    action: Literal["swipeRight"]
-
-class TypeCommand(BaseModel):
-    action: Literal["type"]
-    text: str
-
 class CommandResponse(BaseModel):
-    command: Union[TapCommand, SwipeUpCommand, SwipeDownCommand, 
-                  SwipeLeftCommand, SwipeRightCommand, TypeCommand]
+    command: Union[TapCommand, TypeCommand, SwipeUpCommand, SwipeDownCommand]
     isDone: bool
-    reasoning: Optional[str] = None
 
 # ---------------------------------------------------------------------------
 # 🔨 Utility helpers
 # ---------------------------------------------------------------------------
 
 def sha256(data: bytes) -> str:
-    """Generate SHA-256 hash of input bytes."""
     return hashlib.sha256(data).hexdigest()
 
-def create_command_response(
-    action: str, 
-    *, 
-    box_id: Optional[str] = None, 
-    text: Optional[str] = None, 
-    done: bool = False,
-    reasoning: Optional[str] = None
-) -> dict:
+def create_command_response(action: str, *, box_id: Optional[str] = None, text: Optional[str] = None) -> dict:
     """
-    Create a properly formatted command response based on action type.
-    
-    Args:
-        action: The action to perform (tap, swipeUp, swipeDown, swipeLeft, swipeRight, type)
-        box_id: The grid cell identifier for tap actions
-        text: The text to type for type actions
-        done: Whether this is the final action for the current goal
-        reasoning: Optional explanation for the action
-        
-    Returns:
-        A dictionary representing the command response
+    Returns a dict representation of CommandResponse.
     """
-    try:
-        if action == "tap" and box_id:
-            return CommandResponse(
-                command=TapCommand(action="tap", box_id=box_id),
-                isDone=done,
-                reasoning=reasoning
-            ).model_dump()
-        elif action == "swipeUp":
-            return CommandResponse(
-                command=SwipeUpCommand(action="swipeUp"),
-                isDone=done,
-                reasoning=reasoning
-            ).model_dump()
-        elif action == "swipeDown":
-            return CommandResponse(
-                command=SwipeDownCommand(action="swipeDown"),
-                isDone=done,
-                reasoning=reasoning
-            ).model_dump()
-        elif action == "swipeLeft":
-            return CommandResponse(
-                command=SwipeLeftCommand(action="swipeLeft"),
-                isDone=done,
-                reasoning=reasoning
-            ).model_dump()
-        elif action == "swipeRight":
-            return CommandResponse(
-                command=SwipeRightCommand(action="swipeRight"),
-                isDone=done,
-                reasoning=reasoning
-            ).model_dump()
-        elif action == "type" and text is not None:
-            return CommandResponse(
-                command=TypeCommand(action="type", text=text),
-                isDone=done,
-                reasoning=reasoning
-            ).model_dump()
-        else:
-            return {"error": "Invalid command parameters"}
-    except Exception as e:
-        logger.error(f"Error creating command response: {e}")
-        return {"error": f"Failed to create command: {str(e)}"}
+    if action == "tap" and box_id:
+        return CommandResponse(
+            command=TapCommand(action="tap", box_id=box_id),
+            isDone=False
+        ).model_dump()
+    elif action == "type" and text is not None:
+        return CommandResponse(
+            command=TypeCommand(action="type", text=text),
+            isDone=False
+        ).model_dump()
+    elif action == "swipeUp":
+        return CommandResponse(
+            command=SwipeUpCommand(action="swipeUp"),
+            isDone=False
+        ).model_dump()
+    elif action == "swipeDown":
+        return CommandResponse(
+            command=SwipeDownCommand(action="swipeDown"),
+            isDone=False
+        ).model_dump()
+    else:
+        return {"error": "Invalid command parameters"}
 
 # ---------------------------------------------------------------------------
-# 🤖 Gemini function-calling definitions
+# 🤖 Gemini function-calling wrappers
 # ---------------------------------------------------------------------------
 
 goal_tools = [
@@ -159,301 +106,270 @@ box_tools = [
     }
 ]
 
-# ---------------------------------------------------------------------------
-# 🧠 Gemini API interaction functions
-# ---------------------------------------------------------------------------
-
 def extract_goals(instruction: str) -> List[str]:
-    """
-    Use Gemini to break the instruction into a list of UI goals.
-    
-    Args:
-        instruction: The user's instruction to be broken down
-        
-    Returns:
-        A list of specific UI interaction goals
-    """
-    try:
-        logger.info(f"Extracting goals from instruction: {instruction}")
-        resp = client.chat.completions.create(
-            model="gemini-2.5-pro-preview-03-25",
-            tools=goal_tools,
-            tool_choice={"type": "function", "function": {"name": "extract_goals"}},
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"""
-Break down this instruction into detailed, modular UI goals as if you are automating a mobile interface.
+    resp = client.chat.completions.create(
+        model="gemini-2.5-pro-preview-03-25",
+        tools=goal_tools,
+        tool_choice={"type": "function", "function": {"name": "extract_goals"}},
+        messages=[
+            {
+                "role": "user",
+                "content": f"""
+You are an android assistant which runs on android to do basic chores on behalf of user and that breaks down user instructions into concrete, modular mobile UI goals to automate workflows on Android apps.
 
-Each goal should be command-like and concrete. Include tapping, typing, and interface navigation as needed. If the instruction includes a query (like "search for ..."), you must break it into:
-- tapping the search bar
-- typing the query (e.g., "Type 'capital of France'")
-- tapping the search or enter button.
+Each goal should be written like a command and must reflect specific UI actions such as:
+- Tapping buttons, icons, or menu items (e.g., "Tap element ")
+- Typing into text fields (e.g., "Type something into search bar")
+- Navigating through the interface (e.g., "Open LinkedIn app", "Scroll down", "Swipe left")
+- Selecting or confirming actions (e.g., "Tap 'Connect'", "Tap 'Allow'", "Select first result")
+- Waiting for or verifying UI changes if implied by flow (e.g., "Wait for connection confirmation")
 
-Return the result under the field `goals` as a list of strings.
+Ensure that:
+- Goals are atomic (one action per step)
+- The order reflects how a user would logically complete the task in the UI
+- Multi-step flows (e.g., searching, connecting, posting) are decomposed clearly
 
-Instruction: "{instruction}"
+
+### Knowledge Base:
+
+
+⏰ **Clock App**
+- Clock app has 5 bottom tabs: **Alarm, Clock, Timer, Stopwatch, Bedtime**.
+- If the desired alarm exists, toggle it.
+- Otherwise:
+    1. Tap the **plus (+)** button.
+    2. Set **hour**, **minute**, and **AM/PM**.
+    3. Tap **OK** to confirm.
+
+Return only the modular goals in the `goals` field as a **list of strings**.
+Instruction: \"{instruction}\"
 """,
-                }
-            ],
-            temperature=0,
-        )
-        
-        goals = json.loads(resp.choices[0].message.tool_calls[0].function.arguments)["goals"]
-        logger.info(f"Extracted {len(goals)} goals: {goals}")
-        return goals
-    except Exception as e:
-        logger.error(f"Error extracting goals: {e}")
-        return ["Error extracting goals"]
+            }
+        ],
+        temperature=0,
+    )
 
-def select_box(goal: str, img_b64: str) -> Tuple[str, str]:
-    """
-    Use Gemini to locate the bounding-box that contains the target goal.
-    
-    Args:
-        goal: The current UI goal to locate
-        img_b64: Base64-encoded screenshot with grid overlay
-        
-    Returns:
-        Tuple of (box_id, reasoning) where box_id is the grid cell containing the target
-        or "N/A" if not found, and reasoning explains the selection
-    """
-    try:
-        logger.info(f"Selecting box for goal: {goal}")
-        resp = client.chat.completions.create(
-            model="gemini-2.5-pro-preview-03-25",
-            tools=box_tools,
-            tool_choice={"type": "function", "function": {"name": "select_best_box"}},
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"""
-You are shown a screenshot with bounding boxes labelled a1, b2 …
-Return the single best box that fully contains **{goal}**, or \"N/A\" if not visible.
-Also provide a brief reasoning for your selection.
-""",
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
-                        },
-                    ],
-                }
-            ],
-            temperature=0.4,
-        )
-        
-        box_id = json.loads(resp.choices[0].message.tool_calls[0].function.arguments)["box_id"]
-        reasoning = resp.choices[0].message.content or "No explanation provided"
-        logger.info(f"Selected box: {box_id} with reasoning: {reasoning}")
-        return box_id, reasoning
-    except Exception as e:
-        logger.error(f"Error selecting box: {e}")
-        return "N/A", f"Error: {str(e)}"
+    return json.loads(resp.choices[0].message.tool_calls[0].function.arguments)["goals"]
+
+def select_box(goal: str, img_b64: str) -> str:
+    resp = client.chat.completions.create(
+        model="gemini-2.5-pro-preview-03-25",
+        tools=box_tools,
+        tool_choice={"type": "function", "function": {"name": "select_best_box"}},
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"""You are shown a screenshot with bounding boxes labelled a1, b2, etc.
+Return the single best box that fully contains the UI element needed for this goal: **{goal}**
+Return "N/A" ONLY if the element is definitely not visible in the current screen.
+No explanations.""",
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                    },
+                ],
+            }
+        ],
+        temperature=0.4,
+    )
+    return json.loads(resp.choices[0].message.tool_calls[0].function.arguments)["box_id"]
 
 # ---------------------------------------------------------------------------
-# 🗂️ SessionState to manage each instruction's lifecycle
+# 🗂️ SessionState to manage each instruction's lifecycle with improved state tracking
 # ---------------------------------------------------------------------------
 
 class SessionState:
-    """
-    Manages the state of an ongoing instruction session.
-    Tracks goals, progress, and prevents duplicate processing.
-    """
-    
     def __init__(self, instruction: str):
-        """Initialize a new session with the given instruction."""
         self.instruction = instruction
         self.goals = extract_goals(instruction)
+        print(f"Goals extracted: {self.goals}")
         self.goal_index = 0
-        self.last_hashes: List[str] = []  # store up to 3 screenshot hashes
-        self.consecutive_scrolls = 0
-        self.max_consecutive_scrolls = 3
-        logger.info(f"New session created with {len(self.goals)} goals")
-    
+        self.last_hashes: List[str] = []
+        self.consecutive_failed_attempts = 0
+        self.max_consecutive_fails = 3
+        self.swipe_attempts = 0
+        self.max_swipe_attempts = 5
+        self.alternative_actions = ["swipeUp", "swipeDown"]
+        self.action_index = 0
+        self.last_action = None
+        self.goal_timestamps = {}  # Track when we started working on each goal
+        self.goal_timeout = 20  # seconds before we consider a goal stuck
+
     def current_goal(self) -> Optional[str]:
-        """Get the current goal being processed or None if all goals are complete."""
         if self.goal_index < len(self.goals):
             return self.goals[self.goal_index]
         return None
-    
+
     def advance_goal(self):
-        """Move to the next goal in the sequence."""
+        print(f"✅ Completed goal: {self.current_goal()}")
         self.goal_index += 1
-        self.consecutive_scrolls = 0
-        logger.info(f"Advanced to goal {self.goal_index}/{len(self.goals)}")
-    
-    def is_all_done(self) -> bool:
-        """Check if all goals have been completed."""
-        return self.goal_index >= len(self.goals)
-    
-    def is_duplicate(self, img_bytes: bytes) -> bool:
-        """
-        Check if the current screenshot is a duplicate of recent ones.
-        Also updates the hash history.
-        """
-        h = sha256(img_bytes)
-        duplicate = h in self.last_hashes
+        # Reset counters when progressing to a new goal
+        self.consecutive_failed_attempts = 0
+        self.swipe_attempts = 0
+        if self.goal_index < len(self.goals):
+            # Start tracking time for the new goal
+            self.goal_timestamps[self.goal_index] = time.time()
+            print(f"📋 Now working on: {self.current_goal()}")
+
+    def register_goal_attempt(self, success: bool, action: str):
+        """Track success/failure of attempts to achieve current goal"""
+        self.last_action = action
         
-        # Update hash history
-        self.last_hashes.append(h)
-        if len(self.last_hashes) > 3:
-            self.last_hashes.pop(0)
+        if not success:
+            self.consecutive_failed_attempts += 1
+            if action in ["swipeUp", "swipeDown"]:
+                self.swipe_attempts += 1
+        else:
+            # Reset failure counters on success
+            self.consecutive_failed_attempts = 0
+            self.swipe_attempts = 0
+    
+    def get_next_alternative_action(self) -> str:
+        """Cycle through alternative actions when stuck"""
+        action = self.alternative_actions[self.action_index % len(self.alternative_actions)]
+        self.action_index += 1
+        return action
+
+    def is_goal_stuck(self) -> bool:
+        """Check if we've been trying to achieve the same goal for too long"""
+        if self.goal_index not in self.goal_timestamps:
+            self.goal_timestamps[self.goal_index] = time.time()
+            return False
             
-        if duplicate:
-            logger.info("Duplicate screenshot detected")
+        time_on_goal = time.time() - self.goal_timestamps[self.goal_index]
+        return time_on_goal > self.goal_timeout or self.consecutive_failed_attempts >= self.max_consecutive_fails
+
+    def handle_stuck_goal(self) -> None:
+        """Try to recover when stuck on a goal"""
+        print(f"⚠️ Stuck on goal: {self.current_goal()}. Attempting recovery...")
+        # If we've tried swiping too many times without finding the element, try the next goal
+        if self.swipe_attempts >= self.max_swipe_attempts:
+            print("Exhausted swipe attempts, moving to next goal")
+            self.advance_goal()
+            return
+            
+        # Reset counters but stay on same goal
+        self.consecutive_failed_attempts = 0
+
+    def is_all_done(self) -> bool:
+        return self.goal_index >= len(self.goals)
+
+    def is_duplicate(self, img_bytes: bytes) -> bool:
+        h = sha256(img_bytes)
+        duplicate = (len(self.last_hashes) > 0 and h == self.last_hashes[-1])
+        self.last_hashes.append(h)
+        if len(self.last_hashes) > 2:
+            self.last_hashes.pop(0)
         return duplicate
-    
-    def increment_scroll_count(self) -> int:
-        """
-        Increment the consecutive scroll counter and return the new count.
-        Used to detect when we should try different scroll directions.
-        """
-        self.consecutive_scrolls += 1
-        return self.consecutive_scrolls
-    
-    def reset_scroll_count(self):
-        """Reset the consecutive scroll counter."""
-        self.consecutive_scrolls = 0
 
 # ---------------------------------------------------------------------------
-# 🌍 Session management
+# 🌍 Store multiple sessions keyed by some identifier (like a client ID)
 # ---------------------------------------------------------------------------
 
 sessions: Dict[str, SessionState] = {}
 
-def get_session(client_id: str, instruction: Optional[str] = None) -> Optional[SessionState]:
-    """
-    Get the session for a client, optionally creating a new one.
-    
-    Args:
-        client_id: The unique identifier for the client
-        instruction: If provided, creates a new session with this instruction
-        
-    Returns:
-        The SessionState object or None if no session exists and no instruction was provided
-    """
-    if instruction:
-        sessions[client_id] = SessionState(instruction)
-    
-    return sessions.get(client_id)
+# ---------------------------------------------------------------------------
+# 📝 Structured logging helper
+# ---------------------------------------------------------------------------
+
+def log_action(client_id: str, message: str, data: Any = None) -> None:
+    """Structured logging for debugging and tracing execution flow"""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = {
+        "timestamp": timestamp,
+        "client_id": client_id,
+        "message": message
+    }
+    if data:
+        log_entry["data"] = data
+    print(json.dumps(log_entry))
 
 # ---------------------------------------------------------------------------
-# 🎯 Main function for external call: process_request
+# 🎯 Main function for external call: process_automation_request
 # ---------------------------------------------------------------------------
 
 def process_request(data: dict, client_id: str) -> dict:
-    """
-    Process an automation request from a client.
+    log_action(client_id, "Processing request", {"request_type": "instruction" if "instruction" in data else "step"})
     
-    This function is the main entry point for the search agent. It handles:
-    1. Session creation/retrieval
-    2. Screenshot processing
-    3. Goal execution
-    4. Command generation
+    # Initialize a new session if this is a new instruction
+    if "instruction" in data:
+        instruction = data["instruction"].strip()
+        sessions[client_id] = SessionState(instruction)
+        log_action(client_id, f"New session created for instruction: {instruction}")
+
+    # Validate session
+    if client_id not in sessions:
+        return {"error": "No active session for this client_id. Send 'instruction' first."}
+
+    state = sessions[client_id]
+
+    # Validate image input
+    if "imageb64" not in data:
+        return {"error": "No 'imageb64' field provided"}
+
+    img_b64 = data["imageb64"]
+    img_bytes = base64.b64decode(img_b64)
+
+    # Skip duplicate screenshots to avoid loops
+    if state.is_duplicate(img_bytes):
+        log_action(client_id, "Duplicate screenshot detected")
+        return {"warning": "Duplicate screenshot received"}
+
+    # Check if all goals are completed
+    if state.is_all_done():
+        log_action(client_id, "All goals completed")
+        return {"info": "All goals already completed", "isDone": True}
+
+    # Get current goal
+    goal = state.current_goal()
+    if not goal:
+        log_action(client_id, "No goal to process")
+        return {"info": "No goal to process. Possibly done."}
     
-    Args:
-        data: Dictionary containing 'instruction' and/or 'imageb64'
-        client_id: Unique identifier for the client session
-        
-    Returns:
-        A dictionary with the next command or an error/info message
-    """
-    try:
-        # Handle session creation/retrieval
-        instruction = data.get("instruction")
-        session = get_session(client_id, instruction)
-        
-        if not session:
-            return {"error": "No active session for this client_id. Send 'instruction' first."}
-        
-        # Ensure we have an image to process
-        if "imageb64" not in data:
-            return {"error": "No 'imageb64' field provided"}
-        
-        img_b64 = data["imageb64"]
-        img_bytes = base64.b64decode(img_b64)
-        
-        # Check for duplicate screenshots
-        if session.is_duplicate(img_bytes):
-            return {"warning": "Duplicate screenshot received"}
-        
-        # Check if all goals are completed
-        if session.is_all_done():
-            return {"info": "All goals already completed", "isDone": True}
-        
-        # Get current goal
-        goal = session.current_goal()
+    log_action(client_id, f"Working on goal: {goal}", {"goal_index": state.goal_index})
+
+    # Check if we're stuck on the current goal
+    if state.is_goal_stuck():
+        log_action(client_id, "Detected stuck state")
+        state.handle_stuck_goal()
+        # Get updated goal after handling stuck state
+        goal = state.current_goal()
         if not goal:
-            return {"info": "No goal to process. Possibly done.", "isDone": True}
-        
-        # Handle typing goals directly
-        if goal.lower().startswith("type "):
-            typed_text = goal[5:].strip("'\" ")
-            done = (session.goal_index + 1 == len(session.goals))
-            session.advance_goal()
-            return create_command_response(
-                "type", 
-                text=typed_text, 
-                done=done,
-                reasoning=f"Typing text: '{typed_text}'"
-            )
-        
-        # Use Gemini to find the target element
-        box_id, reasoning = select_box(goal, img_b64)
-        
-        if box_id != "N/A":
-            # Found the target element
-            done = (session.goal_index + 1 == len(session.goals))
-            session.advance_goal()
-            return create_command_response(
-                "tap", 
-                box_id=box_id, 
-                done=done,
-                reasoning=reasoning
-            )
+            return {"info": "Recovery completed all goals", "isDone": True}
+
+    # Handle special "Type" prefix goals
+    if goal.lower().startswith("type "):
+        typed_text = goal[5:].strip("'\" ")
+        log_action(client_id, f"Executing type command: {typed_text}")
+        state.advance_goal()
+        state.register_goal_attempt(success=True, action="type")
+        return create_command_response("type", text=typed_text)
+
+    # Select box for current goal
+    log_action(client_id, f"Analyzing screenshot to find element for: {goal}")
+    box_id = select_box(goal, img_b64)
+    log_action(client_id, f"Box selection result", {"box_id": box_id})
+
+    # Execute taps if box is found
+    if box_id != "N/A":
+        log_action(client_id, f"Element found. Tapping box: {box_id}")
+        state.advance_goal()
+        state.register_goal_attempt(success=True, action="tap")
+        return create_command_response("tap", box_id=box_id)
+    else:
+        # Element not found, try scrolling
+        if state.swipe_attempts < state.max_swipe_attempts:
+            action = state.get_next_alternative_action()
+            log_action(client_id, f"Element not found. Trying {action}", {"swipe_attempt": state.swipe_attempts + 1})
+            state.register_goal_attempt(success=False, action=action)
+            return create_command_response(action)
         else:
-            # Target not found, need to navigate
-            scroll_count = session.increment_scroll_count()
-            
-            # Vary scroll direction based on consecutive scroll count
-            if scroll_count > session.max_consecutive_scrolls:
-                # We've scrolled too much in one direction, try others
-                if scroll_count % 4 == 0:
-                    return create_command_response(
-                        "swipeUp", 
-                        done=False,
-                        reasoning=f"Target '{goal}' not found. Trying swipe up after multiple attempts."
-                    )
-                elif scroll_count % 4 == 1:
-                    return create_command_response(
-                        "swipeRight", 
-                        done=False,
-                        reasoning=f"Target '{goal}' not found. Trying swipe right after multiple attempts."
-                    )
-                elif scroll_count % 4 == 2:
-                    return create_command_response(
-                        "swipeLeft", 
-                        done=False,
-                        reasoning=f"Target '{goal}' not found. Trying swipe left after multiple attempts."
-                    )
-                else:
-                    return create_command_response(
-                        "swipeDown", 
-                        done=False,
-                        reasoning=f"Target '{goal}' not found. Trying swipe down after multiple attempts."
-                    )
-            else:
-                # Default to swipe down for initial scrolling
-                return create_command_response(
-                    "swipeDown", 
-                    done=False,
-                    reasoning=f"Target '{goal}' not found. Scrolling down to look for it."
-                )
-    
-    except Exception as e:
-        logger.error(f"Error in process_request: {e}")
-        return {"error": f"Processing error: {str(e)}"}
+            # If we've scrolled too much without finding the element, skip this goal
+            log_action(client_id, "Max scroll attempts reached, skipping goal")
+            state.advance_goal()
+            return create_command_response("swipeUp")  # One more scroll before next goal
+        

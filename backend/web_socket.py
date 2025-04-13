@@ -10,10 +10,11 @@ from grid_utils import get_coordinate
 
 async def echo_handler(websocket):
     async for message in websocket:
-        print(f"Received from client: {message}", flush=True)
+        # print(f"Received from client: {message}", flush=True)
 
         try:
             data = json.loads(message)
+            print(data.get('prompt'))
 
             input_payload = {}
 
