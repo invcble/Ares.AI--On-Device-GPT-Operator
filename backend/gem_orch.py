@@ -1,8 +1,9 @@
 import os
 import json
 import base64
-import hashlib, re
+import hashlib
 import time
+import re
 from typing import List, Dict, Optional, Union, Literal, Annotated, Any
 
 from dotenv import load_dotenv
@@ -37,7 +38,6 @@ class TypeCommand(BaseModel):
     text: str
     box_id: str
 
-
 class SwipeUpCommand(BaseModel):
     action: Literal["swipeUp"]
 
@@ -47,12 +47,17 @@ class SwipeDownCommand(BaseModel):
 class BackCommand(BaseModel):
     action: Literal["back"]
 
+class AnnounceCommand(BaseModel):
+    action: Literal["announce"]
+    text: str
+
 class CommandResponse(BaseModel):
-    command: Union[TapCommand, TypeCommand, SwipeUpCommand, SwipeDownCommand, BackCommand, WaitCommand]
+    command: Union[TapCommand, TypeCommand, SwipeUpCommand, SwipeDownCommand, BackCommand,AnnounceCommand]
     isDone: bool
 
-class BackCommand(BaseModel):
-    action: Literal["back"]
+class WaitCommand(BaseModel):
+    action: Literal["wait"]
+    duration: int  # Wait duration in milliseconds
 
 # ---------------------------------------------------------------------------
 # 🔨 Utility helpers
@@ -87,9 +92,9 @@ def create_command_response(action: str, *, box_id: Optional[str] = None, text: 
             command=BackCommand(action="back"),
             isDone=False
         ).model_dump()
-    elif action == "wait" and duration is not None:
+    elif action == "announce" and text is not None:
         return CommandResponse(
-            command=WaitCommand(action="wait", duration=duration),
+            command=AnnounceCommand(action="announce", text=text),
             isDone=False
         ).model_dump()
     else:
@@ -121,65 +126,6 @@ box_tools = [
     }
 ]
 
-operation_tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "detect_operation_in_progress",
-            "description": "Detect if there's an operation in progress on the screen like loading, animation, or processing.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "is_operation_in_progress": {
-                        "type": "boolean",
-                        "description": "Whether any operation is in progress on the screen"
-                    },
-                    "wait_duration": {
-                        "type": "integer",
-                        "description": "Suggested wait time in milliseconds if operation is in progress"
-                    }
-                },
-                "required": ["is_operation_in_progress"]
-            }
-        }
-    }
-]
-
-def detect_operation(img_b64: str) -> dict:
-    """Detect if there's any operation in progress on the screen that requires waiting"""
-    resp = client.chat.completions.create(
-        model="gemini-2.0-flash",
-        tools=operation_tools,
-        tool_choice={"type": "function", "function": {"name": "detect_operation_in_progress"}},
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": """Analyze this Android screenshot and determine if there's any operation in progress 
-                        that requires waiting before the next interaction. 
-                        Look for:
-                        - Loading indicators or spinners
-                        - Progress bars
-                        - "Please wait" messages
-                        - Animations in progress
-                        - Dialogs that are appearing/disappearing
-                        - Any visual cues indicating the app is busy
-                        
-                        Return true if any operation is in progress along with a suggested wait time.""",
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
-                    },
-                ],
-            }
-        ],
-        temperature=0.1,
-    )
-    return json.loads(resp.choices[0].message.tool_calls[0].function.arguments)
-
 def extract_goals(instruction: str) -> List[str]:
     resp = client.chat.completions.create(
         model="gemini-2.5-pro-preview-03-25",
@@ -205,6 +151,16 @@ Ensure that:
 
 
 ### Knowledge Base:
+
+⏰ **Whatsapp App**
+- Remember that while interacting with WHATSAPP, when you look for someone through search, click on their name to open the chat not the profile picture.
+
+⏰ **Reddit App**
+- Remember that while interacting with REDDIT, you will probably will be told to browse on user's behalf,
+- In that case, after opening the app, keep scrolling upto 5 times, and then announce a very short summary.
+
+⏰ **Uber App**
+- Remember that while booking UBER, when you complete input/type, the most closest search will appear right below -- pick that.
 
 
 ⏰ **Clock App**
@@ -369,6 +325,23 @@ def log_action(client_id: str, message: str, data: Any = None) -> None:
         log_entry["data"] = data
     print(json.dumps(log_entry))
 
+def create_summary(state: SessionState) -> str:
+    """Create a summary of the session's progress and completed goals"""
+    completed_goals = state.goals[:state.goal_index]
+    remaining_goals = state.goals[state.goal_index:]
+    
+    summary = f"Completed {len(completed_goals)}/{len(state.goals)} goals.\n\n"
+    
+    if completed_goals:
+        summary += "Completed:\n" + "\n".join(f"- {goal}" for goal in completed_goals) + "\n\n"
+    
+    if remaining_goals:
+        summary += "Remaining:\n" + "\n".join(f"- {goal}" for goal in remaining_goals)
+    else:
+        summary += "All goals completed successfully!"
+    
+    return summary
+
 # ---------------------------------------------------------------------------
 # 🎯 Main function for external call: process_automation_request
 # ---------------------------------------------------------------------------
@@ -379,6 +352,17 @@ def process_request(data: dict, client_id: str) -> dict:
     # Initialize a new session if this is a new instruction
     if "instruction" in data:
         instruction = data["instruction"].strip()
+        
+        # Check if this is a request for summary
+        if any(keyword in instruction.lower() for keyword in ["summary", "update", "tell me", "progress"]):
+            if client_id in sessions:
+                state = sessions[client_id]
+                summary = create_summary(state)
+                log_action(client_id, "Providing summary", {"summary": summary})
+                return create_command_response("announce", text=summary)
+            else:
+                return {"error": "No active session to summarize"}
+        
         sessions[client_id] = SessionState(instruction)
         log_action(client_id, f"New session created for instruction: {instruction}")
 
@@ -399,13 +383,6 @@ def process_request(data: dict, client_id: str) -> dict:
     if state.is_duplicate(img_bytes):
         log_action(client_id, "Duplicate screenshot detected")
         return {"warning": "Duplicate screenshot received"}
-
-    # Check for operations in progress before doing anything else
-    operation_check = detect_operation(img_b64)
-    if operation_check.get("is_operation_in_progress", False):
-        wait_duration = operation_check.get("wait_duration", 1000)  # Default 1 second if not specified
-        log_action(client_id, f"Operation in progress detected, waiting for {wait_duration}ms")
-        return create_command_response("wait", duration=wait_duration)
 
     # Check if all goals are completed
     if state.is_all_done():
@@ -433,6 +410,7 @@ def process_request(data: dict, client_id: str) -> dict:
     if goal.lower().startswith("type "):
         match = re.search(r"[\"'](.+?)[\"']|type (.+?)(?: in| on| into| to|$)", goal, re.IGNORECASE)
         typed_text = match.group(1) or match.group(2) if match else goal[5:].strip()
+        # typed_text = typed_text.replace('"','')s
         log_action(client_id, f"Executing type command: {typed_text}")
 
         box_id = select_box(goal, img_b64)
@@ -465,14 +443,14 @@ def process_request(data: dict, client_id: str) -> dict:
         state.register_goal_attempt(success=True, action="tap")
         return create_command_response("tap", box_id=box_id)
     else:
-        # Element not found, try scrolling or going back
+        # Element not found, try scrolling
         if state.swipe_attempts < state.max_swipe_attempts:
             action = state.get_next_alternative_action()
             log_action(client_id, f"Element not found. Trying {action}", {"swipe_attempt": state.swipe_attempts + 1})
             state.register_goal_attempt(success=False, action=action)
             return create_command_response(action)
         else:
-            # If we've tried too many recovery actions without finding the element, skip this goal
-            log_action(client_id, "Max recovery attempts reached, skipping goal")
+            # If we've scrolled too much without finding the element, skip this goal
+            log_action(client_id, "Max scroll attempts reached, skipping goal")
             state.advance_goal()
             return create_command_response("swipeUp")  # One more scroll before next goal
