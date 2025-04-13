@@ -22,21 +22,28 @@ class GifView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
         super.onDraw(canvas)
 
         movie?.let {
-            val now = SystemClock.uptimeMillis()
+            val now = android.os.SystemClock.uptimeMillis()
             if (movieStart == 0L) movieStart = now
 
             val relTime = ((now - movieStart) % it.duration()).toInt()
             it.setTime(relTime)
 
-            val scaleX = 800f / it.width()
-            val scaleY = 800f / it.height()
+            // Center and scale the GIF to fit inside the view
+            val scaleX = width.toFloat() / it.width()
+            val scaleY = height.toFloat() / it.height()
+            val scale = minOf(scaleX, scaleY)
+
+            val dx = (width - it.width() * scale) / 2
+            val dy = (height - it.height() * scale) / 2
 
             canvas.save()
-            canvas.scale(scaleX, scaleY)
+            canvas.translate(dx, dy)
+            canvas.scale(scale, scale)
             it.draw(canvas, 0f, 0f)
             canvas.restore()
 
-            invalidate() // keep redrawing for animation
+            invalidate()
         }
     }
+
 }

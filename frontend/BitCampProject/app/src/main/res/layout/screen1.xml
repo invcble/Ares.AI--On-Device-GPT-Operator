@@ -7,20 +7,35 @@
     android:background="#F9F9F9">
 
     <!-- Title -->
+
+    <!-- Subtitle -->
+
+    <ImageView
+        android:id="@+id/imgLogo"
+        android:layout_width="300dp"
+        android:layout_height="200dp"
+        android:layout_marginTop="56dp"
+        android:contentDescription="Ares Logo"
+        android:src="@drawable/ares_logo_1"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.495"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Ai Assistant"
+        android:layout_marginTop="184dp"
+        android:text="ARES AI"
+        android:textColor="#000"
         android:textSize="20sp"
         android:textStyle="bold"
-        android:textColor="#000"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="24dp"/>
+        app:layout_constraintHorizontal_bias="0.497"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Subtitle -->
     <TextView
         android:id="@+id/tvSubtitle"
         android:layout_width="wrap_content"
@@ -37,8 +52,8 @@
     <com.example.bitcampproject.GifView
         android:id="@+id/gifView"
 
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="0dp"
+        android:layout_height="250dp"
         tools:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/tvSubtitle"
         app:layout_constraintStart_toStartOf="parent"
