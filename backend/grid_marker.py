@@ -12,7 +12,7 @@ def apply_grid_overlay(image: Image.Image) -> Image.Image:
 
     # Font setup
     font_path = "C:/Windows/Fonts/Arial.ttf"  # Change if needed
-    font = ImageFont.truetype(font_path, 35)
+    font = ImageFont.truetype(font_path, 40)
 
     # Colors
     outline_color = "lime"

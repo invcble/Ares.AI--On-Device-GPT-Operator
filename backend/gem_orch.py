@@ -342,11 +342,26 @@ def process_request(data: dict, client_id: str) -> dict:
 
     # Handle special "Type" prefix goals
     if goal.lower().startswith("type "):
-        typed_text = goal[5:].strip("'\" ")
+        typed_text = goal[5:].strip()
         log_action(client_id, f"Executing type command: {typed_text}")
-        state.advance_goal()
-        state.register_goal_attempt(success=True, action="type")
-        return create_command_response("type", text=typed_text)
+
+        box_id = select_box(goal, img_b64)
+        log_action(client_id, f"Box selected for typing: {box_id}")
+
+        if box_id != "N/A":
+            state.advance_goal()
+            state.register_goal_attempt(success=True, action="type")
+            return create_command_response("type", text=typed_text, box_id=box_id)
+        else:
+            if state.swipe_attempts < state.max_swipe_attempts:
+                action = state.get_next_alternative_action()
+                log_action(client_id, f"Text input target not found. Trying {action}", {"swipe_attempt": state.swipe_attempts + 1})
+                state.register_goal_attempt(success=False, action=action)
+                return create_command_response(action)
+            else:
+                log_action(client_id, "Max scroll attempts reached for text input, skipping")
+                state.advance_goal()
+                return create_command_response("swipeUp")
 
     # Select box for current goal
     log_action(client_id, f"Analyzing screenshot to find element for: {goal}")

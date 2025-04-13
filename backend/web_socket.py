@@ -41,7 +41,7 @@ async def echo_handler(websocket):
             # If it's a tap action with a box_id, compute coordinates
             if "command" in response:
                 command = response["command"]
-                if command.get("action") == "tap" and "box_id" in command:
+                if command.get("action") == "tap" or  command.get("action") == "type":
                     try:
                         box_id = command["box_id"]
                         x, y = get_coordinate(box_id)
