@@ -342,7 +342,8 @@ def process_request(data: dict, client_id: str) -> dict:
 
     # Handle special "Type" prefix goals
     if goal.lower().startswith("type "):
-        typed_text = goal[5:].strip()
+        match = re.search(r"[\"'](.+?)[\"']|type (.+?)(?: in| on| into| to|$)", goal, re.IGNORECASE)
+        typed_text = match.group(1) or match.group(2) if match else goal[5:].strip()
         log_action(client_id, f"Executing type command: {typed_text}")
 
         box_id = select_box(goal, img_b64)
