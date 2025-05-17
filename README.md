@@ -1,27 +1,119 @@
-# Ares.ai
+# Ares.AI 📱⚡
 
-## Inspiration
-What if you could control your phone with just one instruction—no tapping, no scrolling, no searching? A task like "Set an alarm for 7:30 a.m." can be done by Siri or Bixby, but what about booking Uber or ordering your cart on Amazon? Shouldn't require a dozen manual steps? We wanted to build something that could understand your intent, see your screen, and act like a human assistant—but with the precision of AI. That’s where Ares.AI began: turning natural language into real-time mobile automation.
+**Control your phone with one sentence. No taps. No scrolls. Just intent → action.**
 
-## What it does
-Ares.AI takes high-level instructions (like "Open WhatsApp and message John") and automates the steps to make it happen. It sees your screen, breaks your request into atomic actions, finds the right UI elements, takes action, and sends back the next move. It keeps track of context, retries when needed, and adapts when stuck, just like a real assistant would.
-
-## Core Working
-
-### Goal Planning with Gemini 2.5 Pro
-We start with a natural language instruction and use function-calling for Gemini 2.5 Pro to break it into a structured sequence of atomic UI actions—like tapping buttons, typing text, or navigating menus. Each goal is clear, ordered, and aligned with how a human would complete the task.
-
-### Stateful Goal Execution
-The agent maintains a session-level memory of which step it’s on, how many attempts have failed, and whether the current goal is stuck. If something goes wrong—like a button not appearing—it tries alternative actions before giving up.
-
-### Visual Grounding with Gemini Vision
-At each step, we pass uniquely processed screenshots with bounding boxes to get coordinates for Gemini to identify the correct bounding box for the next action. If the element isn’t visible, the agent adapts: scrolls, waits, or tries again. It avoids looping on duplicate screenshots and uses hashing to manage screen state effectively.
-
-## Challenges we ran into
-- **UI inconsistency**: Not every screen looks the same—element labels, layouts, and icons vary wildly across apps.  
-- **Image matching in real time**: Finding the right element without lag meant balancing model power with latency.  
-- **State recovery**: Knowing when a goal was truly stuck and how to recover (scrolling, retrying, skipping) required careful heuristics.
+Ares.AI turns your high-level instructions like *"Open WhatsApp and message John"* into precise, automated mobile actions. Unlike traditional voice assistants that stop at simple tasks, Ares understands your screen and handles full workflows—like ordering a product or booking a ride—with real-time UI interaction.
 
 ---
 
-Devpost: https://devpost.com/software/ares-ai
+## 🧠 Inspiration
+
+Siri and Google Assistant can set alarms or play music—but what if you want to complete multi-step tasks like:
+
+- Booking an Uber
+- Ordering your cart on Amazon
+- Navigating settings and toggling modes
+
+We asked: *Why does this still take dozens of taps?*  
+**Ares.AI** was born from this frustration—to act like a smart human assistant with AI precision.
+
+---
+
+## 🚀 What It Does
+
+- 🔍 Understands high-level instructions like "Message Alex on Instagram"
+- 🧩 Breaks it into step-by-step UI actions (tap, scroll, type, etc.)
+- 👁️ Analyzes your phone screen via screenshots
+- 🧠 Maintains context of what’s done, what’s next, and what failed
+- 🔄 Retries, scrolls, adapts, or gives fallback instructions if stuck
+- ✅ Executes real-time interactions with feedback loop
+
+---
+
+## ⚙️ Core Architecture
+
+### 🧭 Goal Planning with Gemini 2.5 Pro
+- Input: `"Book Uber to airport"`
+- Output: Sequence of structured **atomic actions** like:
+  - Open app → Tap search bar → Type destination → Tap "Book"
+
+> Built using function calling with Gemini 2.5 Pro
+
+### 🧠 Stateful Goal Execution
+- Tracks progress per instruction
+- Detects failure loops or stuck states
+- Retries intelligently or attempts fallback actions
+
+### 👁️ Visual Grounding via Gemini Vision
+- Screenshots are sent to Gemini Vision with contextual prompts
+- Identifies the **correct bounding box** to tap/type/scroll
+- Uses screenshot hashing to detect redundant frames
+- Adapts if the element is missing (scroll, wait, retry)
+
+---
+
+## 🧱 Built With
+
+- **Android Studio** — UI automation + screen capture
+- **Kotlin** — Native Android agent logic
+- **Python** — Server + reasoning loop
+- **Gemini 2.5 Pro + Vision** — Planning and grounding
+- **Figma** — UI prototyping
+
+---
+
+## 🚧 Challenges We Faced
+
+- 🌀 **UI Inconsistency** — Varying app layouts required adaptive vision grounding
+- ⚡ **Real-Time Performance** — Balancing model calls with latency
+- 🧭 **State Recovery** — Detecting dead-ends and designing recovery heuristics
+- 🧠 **Natural Loop Avoidance** — Avoiding repeated steps when stuck
+
+---
+
+## 🤖 Outcome
+
+Ares.AI feels like a human assistant with:
+- AI-level consistency
+- Visual awareness
+- Resilience in unknown app flows
+
+> From intent → screen understanding → action execution  
+> Ares closes the loop in mobile automation.
+
+---
+
+## 📦 Try It Out
+
+[🔗 GitHub Repository](https://github.com/yourusername/ares-ai)  
+_(Replace with actual repo link)_
+
+---
+
+## 📍 Roadmap (What's Next)
+
+- 🔐 Permission-aware automation (auto-detect required permissions)
+- 🧠 Long-term memory for task continuity across sessions
+- 🌐 Web interface for remote task triggering
+- 📊 Logs & analytics for debugging agent behavior
+- 🤝 Community plugin system (custom atomic actions)
+
+---
+
+## 🤝 Contributing
+
+We welcome PRs, feature ideas, and collaborations!  
+Please open an issue to start the conversation.
+
+---
+
+## 📜 License
+
+MIT License
+
+---
+
+## 🧠 Shoutout
+
+Inspired by the simplicity of real human assistants and powered by Google’s Gemini.  
+*Ares doesn’t ask how—it just gets it done.*
