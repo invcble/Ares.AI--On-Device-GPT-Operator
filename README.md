@@ -92,6 +92,11 @@ Ares.AI feels like a human assistant with:
 - 🤝 Community plugin system (custom atomic actions)
 
 ---
+## 🎥 Demo
+
+[![Watch the demo](https://img.youtube.com/vi/awKfjunMDRg/0.jpg)](https://www.youtube.com/watch?v=awKfjunMDRg)
+
+---
 
 ## 🤝 Contributing
 
