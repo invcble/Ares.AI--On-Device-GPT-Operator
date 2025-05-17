@@ -83,13 +83,6 @@ Ares.AI feels like a human assistant with:
 
 ---
 
-## 📦 Try It Out
-
-[🔗 GitHub Repository](https://github.com/yourusername/ares-ai)  
-_(Replace with actual repo link)_
-
----
-
 ## 📍 Roadmap (What's Next)
 
 - 🔐 Permission-aware automation (auto-detect required permissions)
